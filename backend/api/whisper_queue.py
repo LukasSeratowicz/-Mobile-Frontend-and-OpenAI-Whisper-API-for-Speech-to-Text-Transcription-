@@ -54,9 +54,7 @@ def transcription_status(token):
 
     for index, audio_file in enumerate(audio_queue):
         if str(audio_file.token) == token:
-            return "in_queue", "OK", index
-        else:
-            print(f"not in queue[{index}]: {audio_file.token}")
+            return "in_queue", "OK", index+1
 
-    return "token_not_found", "", ""
+    return "token_not_found", "Invalid Token, or already retrieved transcription", ""
 

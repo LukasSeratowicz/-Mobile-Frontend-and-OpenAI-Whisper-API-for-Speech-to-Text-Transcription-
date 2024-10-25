@@ -32,13 +32,20 @@ def init_routes(app):
     @app.route('/status/<token>', methods=['GET'])
     def get_status(token):
         code, status_info, value = transcription_status(token)
+
+        response = {"status": code}
+
         if code == "token_not_found" :
-            return jsonify({"error": "Token not found"}), 400
-        elif code == "success":
-            return jsonify({"transcription": value})
-        elif code == "in_queue":
-            return jsonify({"in_queue": value})
-        elif code == "in_progress":
-            return jsonify({"in_progress": status_info})
-        else:
-            return jsonify(status_info), 200
+            response["error"] = status_info
+            return jsonify(response), 400
+        if code == "success":
+            response["transcription"] = value
+            return jsonify(response), 200
+        if code == "in_queue":
+            response["queue_position"] = value
+            return jsonify(response), 200
+        if code == "in_progress":
+            response["processing"] = status_info
+            return jsonify(response), 200
+        response["error"] = "Invalid Response"
+        return jsonify(response), 500
