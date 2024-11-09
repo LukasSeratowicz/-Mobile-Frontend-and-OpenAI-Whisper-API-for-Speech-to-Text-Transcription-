@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <!-- File picker trigger (TextView) to replace the ImageView -->
+    <TextView
+        android:id="@+id/audio_picker"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="16dp"
+		android:background="?android:attr/selectableItemBackground"
+        android:gravity="center"
+        android:text="Select Audio File"
+        android:textColor="#000000"
+        android:textSize="16sp"
+        android:drawableStart="@android:drawable/ic_menu_upload"
+        android:drawablePadding="8dp" 
+	/>
+
+    <!-- Keep the button for later use -->
+</LinearLayout>

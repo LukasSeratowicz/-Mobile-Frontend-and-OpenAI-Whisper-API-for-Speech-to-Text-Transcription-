@@ -5,6 +5,7 @@ import logging
 import threading
 import shutil
 import os
+import ssl
 
 app = Flask(__name__)
 
@@ -23,4 +24,8 @@ if __name__ == "__main__":
     delete_temps()
     processing_thread = threading.Thread(target=queue_loop, daemon=True)
     processing_thread.start()
-    app.run(debug=True, host='0.0.0.0', port=5000, threaded=True)
+
+    context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    context.load_cert_chain(certfile="certificate.crt", keyfile="private.key")
+
+    app.run(debug=True, host='0.0.0.0', port=5000, threaded=True, ssl_context=context)
