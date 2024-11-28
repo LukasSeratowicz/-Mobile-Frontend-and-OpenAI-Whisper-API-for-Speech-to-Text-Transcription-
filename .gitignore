@@ -37,3 +37,4 @@ google-services.json
 *.pyc
 private.key
 venv/
+.DS_Store
