@@ -1,5 +1,9 @@
 package com.example.androidstudioproject
 
+import android.content.Context
+import android.content.pm.PackageManager
+import android.media.AudioManager
+import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -46,8 +50,13 @@ import org.json.JSONObject
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.ui.Alignment
 import androidx.compose.material3.MaterialTheme
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.*
 import kotlin.coroutines.coroutineContext
+import android.Manifest
+import android.media.MediaPlayer
+import android.os.Environment
 
 
 class MainActivity : ComponentActivity() {
@@ -55,9 +64,26 @@ class MainActivity : ComponentActivity() {
     private var filePickerVisible by mutableStateOf(true)
     private var textFieldVisible by mutableStateOf(false)
     private var textFieldValue by mutableStateOf("")
+    private var recordingVisible by mutableStateOf(true)
+    private var isRecording by mutableStateOf(false)
+    private var recordedFile: File? = null
     private var globalToken: String? = null
     private var statusJob: Job? = null // Job to control the coroutine execution
 
+
+    private fun requestAudioPermissions() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.RECORD_AUDIO),
+                REQUEST_AUDIO_PERMISSION_CODE
+            )
+        }
+    }
+
+    companion object {
+        private const val REQUEST_AUDIO_PERMISSION_CODE = 200
+    }
 
     private val audioPickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         uri?.let {
@@ -67,6 +93,8 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    private var mediaRecorder: MediaRecorder? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -88,6 +116,18 @@ class MainActivity : ComponentActivity() {
                                 audioPickerLauncher.launch("audio/*")
                             }
                         }
+
+                        requestAudioPermissions()
+                        Button(
+                            onClick = { toggleRecording() },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp)
+                                .alpha(if (recordingVisible) 1f else 0f)
+                        ) {
+                            Text(if (isRecording) "Stop Recording" else "Record Audio")
+                        }
+
                         Button(
                             onClick = { handleButtonClick() },
                             modifier = Modifier
@@ -114,6 +154,77 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun isMicrophoneAvailable(): Boolean {
+        val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+        return audioManager.mode != AudioManager.MODE_IN_CALL
+    }
+
+    private fun toggleRecording() {
+        if (isRecording) {
+            stopRecording()
+        } else {
+            startRecording()
+        }
+    }
+
+    private fun startRecording() {
+        resetSelection()
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            Log.e("RecordingError", "Permission not granted")
+            requestAudioPermissions()
+            return
+        }
+
+        if (!isMicrophoneAvailable()) {
+            Log.e("RecordingError", "Microphone is unavailable")
+            return
+        }
+
+        try {
+            mediaRecorder = MediaRecorder(applicationContext).apply {
+                setAudioSource(MediaRecorder.AudioSource.MIC) // Use the microphone
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4) // MPEG_4 format
+                setOutputFile(getExternalFilesDir(null)?.absolutePath + "/myrecording.mp3")
+                setAudioEncoder(MediaRecorder.AudioEncoder.AAC) // Audio encoding
+
+                prepare() // Prepare the recorder
+                start() // Start recording
+            }
+            Log.d("AudioRecording", "Recording started")
+        } catch (e: IOException) {
+            Log.e("RecordingError", "Failed to start recording", e)
+        } catch (e: IllegalStateException) {
+            Log.e("RecordingError", "MediaRecorder in invalid state", e)
+        } catch (e: Exception) {
+            Log.e("RecordingError", "Unexpected error: ${e.message}", e)
+        }
+    }
+
+    private fun stopRecording() {
+        try {
+            mediaRecorder?.apply {
+                stop()
+                reset()
+                release()
+            }
+            mediaRecorder = null
+            isRecording = false
+            recordedFile = File(getExternalFilesDir(null)?.absolutePath + "/myrecording.mp3")
+            recordedFile?.let {
+                sendAudioToBackend(it)
+            }
+        } catch (e: Exception) {
+            Log.e("RecordingError", "Failed to stop recording", e)
+        }
+    }
+
+    private fun resetSelection() {
+        filePickerVisible = false
+        recordingVisible = true
+        isRecording = true
+        recordedFile = null
     }
 
     private fun handleButtonClick() {
