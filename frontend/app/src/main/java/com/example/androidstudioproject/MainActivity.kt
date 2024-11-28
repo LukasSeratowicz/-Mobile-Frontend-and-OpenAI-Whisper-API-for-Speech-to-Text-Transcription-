@@ -46,6 +46,8 @@ import org.json.JSONObject
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.ui.Alignment
 import androidx.compose.material3.MaterialTheme
+import kotlinx.coroutines.*
+import kotlin.coroutines.coroutineContext
 
 
 class MainActivity : ComponentActivity() {
@@ -54,6 +56,7 @@ class MainActivity : ComponentActivity() {
     private var textFieldVisible by mutableStateOf(false)
     private var textFieldValue by mutableStateOf("")
     private var globalToken: String? = null
+    private var statusJob: Job? = null // Job to control the coroutine execution
 
 
     private val audioPickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
@@ -115,13 +118,18 @@ class MainActivity : ComponentActivity() {
 
     private fun handleButtonClick() {
         Log.d("ButtonClicked", "clicked")
-        checkTranscriptionStatus()
+        // Cancel any existing status checks
+        statusJob?.cancel()
+        // Start a new coroutine to check the status every 10 seconds
+        statusJob = CoroutineScope(Dispatchers.IO).launch {
+            checkStatusPeriodically()
+        }
     }
 
     private fun checkTranscriptionStatus() {
         val client = createUnsafeOkHttpClient()
 
-        val statusUrl = "https://192.168.1.29:5000/status/$globalToken"
+        val statusUrl = "https://192.168.1.89:5000/status/$globalToken"
 
         val request = Request.Builder()
             .url(statusUrl)
@@ -182,6 +190,74 @@ class MainActivity : ComponentActivity() {
         })
     }
 
+    private suspend fun checkStatusPeriodically() {
+        val client = createUnsafeOkHttpClient()
+        val statusUrl = "https://192.168.1.89:5000/status/$globalToken"
+        val request = Request.Builder().url(statusUrl).get().build()
+
+        while (coroutineContext.isActive) {
+            try {
+                val response = client.newCall(request).execute() // Synchronous request
+                if (response.isSuccessful) {
+                    val responseBody = response.body?.string()
+                    responseBody?.let {
+                        Log.d("StatusResponse", "Status Response: $it")
+                        val jsonResponse = JSONObject(it)
+                        val code = jsonResponse.getString("status")
+                        when (code) {
+                            "success" -> {
+                                val transcription = jsonResponse.getString("transcription")
+                                updateUI(transcription)
+                                cancelJob()
+                                return
+                            }
+                            "in_queue" -> {
+                                val queuePosition = jsonResponse.getInt("queue_position")
+                                updateUI("In Queue: $queuePosition")
+                            }
+                            "in_progress" -> {
+                                val processingStatus = jsonResponse.getString("processing")
+                                updateUI(processingStatus)
+                            }
+                            else -> {
+                                Log.d("Unknown Code", "Received unknown code: $code")
+                            }
+                        }
+                    }
+                } else {
+                    Log.e("StatusError", "Backend returned error: ${response.code}")
+                    updateUI("Error: ${response.code}")
+                    cancelJob()
+                    return
+                }
+            } catch (e: Exception) {
+                Log.e("StatusError", "Exception occurred: ${e.message}", e)
+                updateUI("Error: ${e.message}")
+                cancelJob()
+                return
+            }
+
+            delay(10_000) // Wait for 10 seconds before the next check
+        }
+    }
+
+
+    private fun updateUI(message: String) {
+        // Update UI-related states on the main thread
+        runOnUiThread {
+            textFieldVisible = true
+            textFieldValue = message
+            buttonVisible = false
+            filePickerVisible = true
+        }
+    }
+
+    private fun cancelJob() {
+        // Cancel the coroutine job if active
+        statusJob?.cancel()
+    }
+
+
     private fun uriToFile(uri: Uri): File? {
         val contentResolver = applicationContext.contentResolver
         val fileName = getFileName(uri)  // Get the original file name
@@ -231,7 +307,7 @@ class MainActivity : ComponentActivity() {
 
         Log.d("FileInfo", "Sending file: ${file.name} of size: ${file.length()} bytes")
         val request = Request.Builder()
-            .url("https://192.168.1.29:5000/transcribe")
+            .url("https://192.168.1.89:5000/transcribe")
             .post(requestBody)
             .build()
 
@@ -252,6 +328,8 @@ class MainActivity : ComponentActivity() {
                         textFieldVisible = false
                         textFieldValue = ""
                     }
+                    // Start periodic status checks
+                    handleButtonClick()
                 } else {
                     Log.e("BackendError", "Backend returned error: ${response.code}")
                     filePickerVisible = true
